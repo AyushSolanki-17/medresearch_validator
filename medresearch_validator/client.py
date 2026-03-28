@@ -12,7 +12,11 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import MedresearchValidatorAction, MedresearchValidatorObservation
+
+from medresearch_validator.models import (
+    MedresearchValidatorAction,
+    MedresearchValidatorObservation,
+)
 
 
 class MedresearchValidatorEnv(
@@ -54,9 +58,7 @@ class MedresearchValidatorEnv(
         Returns:
             Dictionary representation suitable for JSON encoding
         """
-        return {
-            "message": action.message,
-        }
+        return action.model_dump()
 
     def _parse_result(self, payload: Dict) -> StepResult[MedresearchValidatorObservation]:
         """
@@ -70,11 +72,13 @@ class MedresearchValidatorEnv(
         """
         obs_data = payload.get("observation", {})
         observation = MedresearchValidatorObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            image_findings=obs_data.get("image_findings", ""),
+            report_text=obs_data.get("report_text", ""),
+            hypothesis=obs_data.get("hypothesis", ""),
+            step_count=obs_data.get("step_count", 0),
+            task_type=obs_data.get("task_type", ""),
             done=payload.get("done", False),
             reward=payload.get("reward"),
-            metadata=obs_data.get("metadata", {}),
         )
 
         return StepResult(

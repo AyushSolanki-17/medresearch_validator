@@ -6,6 +6,8 @@
 
 """Medresearch Validator environment server components."""
 
-from .medresearch_validator_environment import MedresearchValidatorEnvironment
+from server.medresearch_validator_environment import (
+    MedresearchValidatorEnvironment,
+)
 
 __all__ = ["MedresearchValidatorEnvironment"]

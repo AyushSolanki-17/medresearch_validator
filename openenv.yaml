@@ -1,7 +1,29 @@
 spec_version: 1
-name: medresearch_validator
+id: medresearch-validator
+name: Multimodal Medical Research Validator
+description: Environment for validating medical hypotheses using imaging findings and reports
+
+tasks:
+  - id: easy
+    description: Validate if report matches findings
+  - id: medium
+    description: Compare findings across cases
+  - id: hard
+    description: Detect inconsistencies and refine hypothesis
+
+observation_space:
+  image_findings: string
+  report_text: string
+  hypothesis: string
+  step_count: int
+
+action_space:
+  action_type: string
+  content: string
+  confidence: float
+
+reward_range: [-1, 1]
 type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
-

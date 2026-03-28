@@ -35,12 +35,13 @@ except Exception as e:  # pragma: no cover
         "openenv is required for the web interface. Install dependencies with '\n    uv sync\n'"
     ) from e
 
-try:
-    from ..models import MedresearchValidatorAction, MedresearchValidatorObservation
-    from .medresearch_validator_environment import MedresearchValidatorEnvironment
-except ModuleNotFoundError:
-    from models import MedresearchValidatorAction, MedresearchValidatorObservation
-    from server.medresearch_validator_environment import MedresearchValidatorEnvironment
+
+from medresearch_validator.models import (
+    MedresearchValidatorAction,
+    MedresearchValidatorObservation,
+)
+
+from . import MedresearchValidatorEnvironment
 
 
 # Create the app with web interface and README integration
