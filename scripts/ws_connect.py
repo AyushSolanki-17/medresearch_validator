@@ -1,24 +1,51 @@
 from medresearch_validator.client import MedresearchValidatorEnv
 from medresearch_validator.models import MedresearchValidatorAction
 
-with MedresearchValidatorEnv(base_url="http://localhost:8000").sync() as client:
-    print("Starting MedresearchValidatorAction...")
-    result = client.reset()
-    print(result.observation)
+from medresearch_validator.utils.logger import get_logger
+logger = get_logger(__name__)
 
-    print("Fetching MedresearchValidatorAction...")
-    print("CLIENT MODEL:", MedresearchValidatorAction)
+def run_episode(client, obs):
+
+    logger.info("Starting episode")
+    logger.info("Observation:", obs)
+
+    # Step 1: Analyze
+    action1 = MedresearchValidatorAction(
+        action_type="analyze",
+        content="There is a contradiction between findings and hypothesis",
+        confidence=0.8
+    )
+    result = client.step(action1)
+    logger.info("Analyze Reward:", result.reward)
 
 
-    action = MedresearchValidatorAction(
+    # Step 2: Validate
+    action2 = MedresearchValidatorAction(
         action_type="validate",
-        content="This suggests pneumonia",
+        content="No disease is present",
         confidence=0.9
     )
+    result = client.step(action2)
+    logger.info("Validate Reward:", result.reward)
 
-    print(action.model_dump())  # 👈 check payload
 
-    result = client.step(action)
-    print(result.observation)
+    # Step 3: Refine
+    action3 = MedresearchValidatorAction(
+        action_type="refine",
+        content="Final diagnosis: no disease",
+        confidence=0.9
+    )
+    result = client.step(action3)
+    logger.info("Final Diagnosis:", result)
 
-    print("Ending MedresearchValidatorAction...")
+with MedresearchValidatorEnv(base_url="http://localhost:8000").sync() as client:
+
+    # Keep trying until we hit HARD task
+    for _ in range(5):
+        result = client.reset()
+        obs = result.observation
+        if result.observation.task_type == "hard":
+            break
+
+
+    run_episode(client,obs)

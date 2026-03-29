@@ -9,7 +9,7 @@ Key Features:
 - Deterministic reward + grading
 - Real NIH dataset integration
 """
-
+import random
 from typing import Optional, Any, List
 from uuid import uuid4
 
@@ -21,7 +21,7 @@ from medresearch_validator.models import (
     MedresearchValidatorObservation,
 )
 
-from server.utils import NIHDataLoader
+from medresearch_validator.utils import NIHDataLoader
 
 
 class MedresearchValidatorEnvironment(Environment):
@@ -73,6 +73,8 @@ class MedresearchValidatorEnvironment(Environment):
         Returns:
             MedresearchValidatorObservation: Initial state
         """
+        tasks = ["easy"] * 2 + ["medium"] * 3 + ["hard"] * 5
+        self._task = random.choice(tasks)
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._done = False
         self._history = []
@@ -89,14 +91,22 @@ class MedresearchValidatorEnvironment(Environment):
 
         # Handle labels safely
         if not labels:
-            self._image_findings = "No findings"
-            self._hypothesis = "No disease detected"
             self._ground_truth = []
-        else:
-            self._image_findings = ", ".join(labels)
-            self._hypothesis = f"Patient has {labels[0]}"
-            self._ground_truth = labels
+            if self._task == "hard":
+                self._image_findings = "No findings"
+                self._hypothesis = "Patient has pneumonia"
+            else:
+                self._image_findings = "No findings"
+                self._hypothesis = "No disease detected"
 
+        else:
+            self._ground_truth = labels
+            if self._task == "hard":
+                self._image_findings = ", ".join(labels)
+                self._hypothesis = "No disease detected"
+            else:
+                self._image_findings = ", ".join(labels)
+                self._hypothesis = f"Patient has {labels[0]}"
         return MedresearchValidatorObservation(
             image_findings=self._image_findings,
             report_text="Auto-generated report based on findings",
@@ -124,7 +134,6 @@ class MedresearchValidatorEnvironment(Environment):
         """
         self._state.step_count += 1
         self._history.append(action)
-        print("SERVER MODEL:", MedresearchValidatorAction)
 
         reward = 0.0
         done = False
@@ -166,35 +175,50 @@ class MedresearchValidatorEnvironment(Environment):
 
     def grade(self) -> float:
         """
-        Evaluate entire episode.
+        Advanced deterministic grader.
 
-        Scoring:
-            + diagnosis correctness
-            + evidence usage
-            + confidence calibration
-            - hallucination penalty
+        Evaluates:
+        - Correct diagnosis
+        - Contradiction detection
+        - Evidence usage
+        - Confidence calibration
+        - Penalizes repetition & hallucination
         """
+
         score = 0.0
         seen_labels = set()
+        seen_phrases = set()
 
-        for action in self._history:
-            content = action.content.lower()
-            # Contradiction detection
+        for i, action in enumerate(self._history):
+            content = action.content.lower().strip()
+
+            # Penalize empty / weak responses
+            if len(content) < 5:
+                score -= 0.1
+                continue
+
+            # Penalize repetition
+            if content in seen_phrases:
+                score -= 0.1
+                continue
+            seen_phrases.add(content)
+
+            # Contradiction detection (HARD task)
             if not self._ground_truth:
                 if "contradiction" in content or "inconsistent" in content:
                     score += 0.3
 
-            # Correct diagnosis
+            # Correct diagnosis (only once per label)
             for label in self._ground_truth:
                 if label.lower() in content and label not in seen_labels:
                     score += 0.4
                     seen_labels.add(label)
 
-            # Evidence
+            # Evidence usage
             if "opacity" in content or "lung" in content:
                 score += 0.2
 
-            # Confidence
+            # Confidence calibration
             if 0.6 <= action.confidence <= 0.95:
                 score += 0.1
 
@@ -202,10 +226,11 @@ class MedresearchValidatorEnvironment(Environment):
             if "cancer" in content and "cancer" not in [l.lower() for l in self._ground_truth]:
                 score -= 0.2
 
+            # Reward progression (later steps more valuable)
+            score += 0.05 * i
+
         return max(0.0, min(score, 1.0))
-
     # TASK LOGIC
-
     def _easy_task(self, action_type: str, content: str) -> float:
         """Simple validation task."""
         if action_type == "validate":
@@ -228,26 +253,35 @@ class MedresearchValidatorEnvironment(Environment):
 
     def _hard_task(self, action_type: str, content: str) -> float:
         """
-        Hard task: detect inconsistency + refine hypothesis.
+        Hard task: detect contradiction and fix hypothesis.
         """
 
-        # Detect contradiction
+        # Step 1: detect contradiction
         if action_type == "analyze":
             if "contradiction" in content or "inconsistent" in content:
                 return 0.3
             return 0.1
 
-        # Validate reasoning
+        # Step 2: correct reasoning
         if action_type == "validate":
             if not self._ground_truth:
                 if "no disease" in content:
                     return 0.3
                 return -0.1
+            else:
+                if any(label.lower() in content for label in self._ground_truth):
+                    return 0.3
+                return -0.1
 
-        # Refine hypothesis
+        # Step 3: refine hypothesis (final step)
         if action_type == "refine":
-            if "no disease" in content or "normal" in content:
-                return 0.6
+            if not self._ground_truth:
+                if "no disease" in content:
+                    return 0.6
+            else:
+                if any(label.lower() in content for label in self._ground_truth):
+                    return 0.6
+
             return 0.2
 
         return 0.0

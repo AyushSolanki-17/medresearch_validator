@@ -28,6 +28,8 @@ Usage:
     python -m server.app
 """
 
+from fastapi import Request
+
 try:
     from openenv.core.env_server.http_server import create_app
 except Exception as e:  # pragma: no cover
@@ -52,7 +54,40 @@ app = create_app(
     env_name="medresearch_validator",
     max_concurrent_envs=1,  # increase this number to allow more concurrent WebSocket sessions
 )
+app.state.env = MedresearchValidatorEnvironment()
 
+@app.post("/grader")
+async def grade(request: Request):
+    """
+    Returns final score for current episode.
+
+    Uses the current session's environment instance.
+    """
+    env = request.app.state.env  # access environment instance
+    return {"score": env.grade()}
+
+
+@app.get("/tasks")
+async def tasks():
+    """
+    Returns available tasks in the environment.
+    """
+    return {
+        "tasks": [
+            {
+                "id": "easy",
+                "description": "Validate diagnosis from findings"
+            },
+            {
+                "id": "medium",
+                "description": "Analyze findings and validate hypothesis"
+            },
+            {
+                "id": "hard",
+                "description": "Detect contradiction and refine hypothesis"
+            }
+        ]
+    }
 
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
