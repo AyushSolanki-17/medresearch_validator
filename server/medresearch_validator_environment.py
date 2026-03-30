@@ -52,6 +52,7 @@ class MedresearchValidatorEnvironment(Environment):
         self._done = False
 
         self._loader = NIHDataLoader()
+        self._scenario_type: str = "normal"
 
         self._task: str = "easy"
         self._ground_truth: List[str] = []
@@ -89,24 +90,55 @@ class MedresearchValidatorEnvironment(Environment):
                 self._image_findings = "No findings"
                 self._hypothesis = "Patient has pneumonia"
 
+            self._scenario_type = random.choice([
+                "contradiction",
+                "overconfidence",
+                "ambiguity"
+            ])
+        else:
+            self._scenario_type = "normal"
+
         # Handle labels safely
         if not labels:
             self._ground_truth = []
+
             if self._task == "hard":
-                self._image_findings = "No findings"
-                self._hypothesis = "Patient has pneumonia"
+                if self._scenario_type == "contradiction":
+                    self._image_findings = "No findings"
+                    self._hypothesis = "Patient has pneumonia"
+
+                elif self._scenario_type == "overconfidence":
+                    self._image_findings = "Mild opacity"
+                    self._hypothesis = "Severe pneumonia"
+
+                elif self._scenario_type == "ambiguity":
+                    self._image_findings = "Possible infection"
+                    self._hypothesis = "Patient has pneumonia"
+
             else:
                 self._image_findings = "No findings"
                 self._hypothesis = "No disease detected"
 
         else:
             self._ground_truth = labels
+
             if self._task == "hard":
-                self._image_findings = ", ".join(labels)
-                self._hypothesis = "No disease detected"
+                if self._scenario_type == "contradiction":
+                    self._image_findings = ", ".join(labels)
+                    self._hypothesis = "No disease detected"
+
+                elif self._scenario_type == "overconfidence":
+                    self._image_findings = "Mild " + labels[0]
+                    self._hypothesis = "Severe " + labels[0]
+
+                elif self._scenario_type == "ambiguity":
+                    self._image_findings = "Possible " + labels[0]
+                    self._hypothesis = f"Patient has {labels[0]}"
+
             else:
                 self._image_findings = ", ".join(labels)
                 self._hypothesis = f"Patient has {labels[0]}"
+
         return MedresearchValidatorObservation(
             image_findings=self._image_findings,
             report_text="Auto-generated report based on findings",
@@ -115,6 +147,7 @@ class MedresearchValidatorEnvironment(Environment):
             reward=0.0,
             done=False,
             task_type=self._task,
+            scenario_type=self._scenario_type,
         )
 
     def step(
@@ -166,6 +199,7 @@ class MedresearchValidatorEnvironment(Environment):
             reward=reward,
             done=done,
             task_type=self._task,
+            scenario_type=self._scenario_type,
         )
 
     @property
@@ -253,35 +287,47 @@ class MedresearchValidatorEnvironment(Environment):
 
     def _hard_task(self, action_type: str, content: str) -> float:
         """
-        Hard task: detect contradiction and fix hypothesis.
+        Advanced hard task with multiple reasoning scenarios.
         """
 
-        # Step 1: detect contradiction
-        if action_type == "analyze":
-            if "contradiction" in content or "inconsistent" in content:
-                return 0.3
-            return 0.1
-
-        # Step 2: correct reasoning
-        if action_type == "validate":
-            if not self._ground_truth:
-                if "no disease" in content:
+        # --- CONTRADICTION ---
+        if self._scenario_type == "contradiction":
+            if action_type == "analyze":
+                if "contradiction" in content or "inconsistent" in content:
                     return 0.3
-                return -0.1
-            else:
-                if any(label.lower() in content for label in self._ground_truth):
+                return 0.1
+
+            if action_type == "refine":
+                if not self._ground_truth:
+                    if "no disease" in content:
+                        return 0.6
+                else:
+                    if any(l.lower() in content for l in self._ground_truth):
+                        return 0.6
+                return 0.2
+
+        # --- OVERCONFIDENCE ---
+        if self._scenario_type == "overconfidence":
+            if action_type == "analyze":
+                if "mild" in content or "severity" in content:
                     return 0.3
-                return -0.1
+                return 0.1
 
-        # Step 3: refine hypothesis (final step)
-        if action_type == "refine":
-            if not self._ground_truth:
-                if "no disease" in content:
+            if action_type == "refine":
+                if "mild" in content:
                     return 0.6
-            else:
-                if any(label.lower() in content for label in self._ground_truth):
-                    return 0.6
+                return 0.2
 
-            return 0.2
+        # --- AMBIGUITY ---
+        if self._scenario_type == "ambiguity":
+            if action_type == "analyze":
+                if "uncertain" in content or "possible" in content:
+                    return 0.3
+                return 0.1
+
+            if action_type == "refine":
+                if "uncertain" in content or "possible" in content:
+                    return 0.6
+                return 0.2
 
         return 0.0

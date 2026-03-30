@@ -41,3 +41,4 @@ class MedresearchValidatorObservation(Observation):
     hypothesis: str = Field(default="", description="Current hypothesis")
     step_count: int = Field(default=0, description="Step counter")
     task_type: str = Field(default="", description="Current task type")
+    scenario_type: str = Field(default="", description="Scenario type for reasoning")
